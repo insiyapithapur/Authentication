@@ -1,3 +1,12 @@
+# backend Authentication project ::  social media authentication , logout and 
+# forgetpassword functionality ----> 07th dec
+
+# frontend Authentication project ::: signup screen , login screen , otp verification
+# screen , update password screen , forget password screen , set password screen ,,,,
+# total approx  :::: 06 to 07 screen---->  11 to 14th  dec
+
+# Full Ready ---> 15 or 16th of December
+
 from random import randint
 from django.shortcuts import render
 from rest_framework.views import APIView
@@ -17,79 +26,67 @@ from Authentication import settings
 # JWT Aithentication
 # update Password
 
-
 class UserRegistrationView(APIView):   
     authentication_classes = []
     permission_classes = [AllowAny]
     def post(self, request):
-        username = request.data.get('username')
+        email = request.data.get('email')
         password = request.data.get('password')
-        # email = request.data.get('email')
     
-        mob_exists = User.objects.filter(username=username).exists()
-        if mob_exists == True:
-            return Response({"message":"Mobile Number already exists"},status=404)
+        email_exists = User.objects.filter(username=email).exists()
+        if email_exists == True:
+            return Response({"message":"Email already exists"},status=404)
         else:
-            user = User.objects.create_user(username=username,password=password)
+            user = User.objects.create_user(username=email,password=password)
             if user is not None:
                 user.save()
                 return Response({"message":"User Registered"},status=200)
             else:
                 return Response({"message":"Something went wrong"},status=404)
-         
+            
+
+# server had registered the user and he/she had to do login  
+# user had provided login credentials to server --> server checks into db that login
+# credentials has match correctly --> if mtched then it send otp to email
+#                                 --> if not then it response that user doesn't exist
+# otp sent to mail --> verifyotp user with otp --> if match them it provide token and 
+#                                                  logedin the user
+#                                              --> if not then invalid code/otp
 class UserLoginView(APIView):   
     authentication_classes = []
     permission_classes = [AllowAny]
     def post(self, request):
-        username = request.data.get('username')
-        print(username)
+        email = request.data.get('email')
         password = request.data.get('password')
-        print(password)
+        
         try:
-            user = authenticate(username=username, password=password)
+            user = authenticate(username=email, password=password)
             print(user)
-            print("jkjegbdjw")
-
             random_code = randint(100000, 999999)
-            print(random_code)
-            # email_sent = send_mail.delay(random_code, username)
-            # print(email_sent)
-            # email_result = email_sent.get()
             subject = 'OTP'
-            message = f'{user.username}, Your otp is {random_code}'
+            message = f'Your otp is {random_code}'
             email_from = settings.EMAIL_HOST_USER
             recipient_list = [user.username]
-            print(recipient_list)
-            # sotp = models.otp.objects.create(username=username,code=random_code)
-            # print(sotp)
-            send_mail( subject, message, email_from, recipient_list )
-            # models.otp.objects.create(username=username , code = random_code)
-            try:
-                user = User.objects.get(username=username)
-                print(user)
-            except User.DoesNotExist:
-                # Handle the case when the user doesn't exist
-                return Response({"message": "User does not exist"}, status=400)
+            send_mail( subject, message, email_from, recipient_list)
+            
+            user = User.objects.get(username=email)
             otp_obj = models.otp.objects.create(username=user, code=random_code)
-            # refresh = RefreshToken.for_user(user) 
+            
             return Response({"message": "Successfully Email has been sent"}, status=200)
         except Exception:
-            return Response({"message": "Invalid Credentials"}, status=400)
+            return Response({"message": "Invalid Credentials or User Doesn't Exist"}, status=400)
 
 class verifyOTP(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
     def post(self, request):
-        username = request.POST.get('username')
+        email = request.POST.get('email')
         code = request.POST.get('code')
+        try:
+                user = User.objects.get(username=email)
+                new_user = models.otp.objects.get(username = user,code=code)
+                login(request,user)
 
-        if username and code:
-            try:
-                user = User.objects.get(username=username)
-                print(user)
-                new_user = models.otp.objects.get(username = user)
-                print(new_user)
-                # login(request,user)
                 # Access the tokens
                 refresh = RefreshToken.for_user(user)
                 refresh_token = str(refresh)
@@ -98,21 +95,40 @@ class verifyOTP(APIView):
                 return Response({
                     "message": "Successfully logged in",
                     "refresh_token": refresh_token,
-                    "access_token": access_token
+                    "access_token": access_token 
                 }, status=200)
-            except:
+        except:
                 return Response({'message': 'Invalid code'} , status= 400)
-        else:
-            return Response({'message': 'missed info'},status = 400)
+
+# in updatepassword the jwt_token will pass in header and other in body --> jwt_token.id==user.id
+                                                                                # then updated
+class UpdatePassword(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    def post(self, request):
+        email = request.POST.get('email')
+        password = request.POST.get('password')
+
+        try:
+            user = User.objects.get(username=email)
+            user_id = user.id            
+            jwt_token = request.auth
+            user_id_from_token = jwt_token.get('user_id', None)
+           
+            user.set_password(password)
+            user.save()
+            if user_id == user_id_from_token : 
+                return Response({"message" : "Successfully Updated"} , status = 200)
+            else :
+                return Response({'message' : "User Id is not matching with token"} , status=404)
+        except:
+            return Response({"message": "User Doesn't exist"} , status= 400)
 
 
 class ForgetPasswordView(APIView):   
-    print("bjhsg")
-    # if he is not login then how he/she is authenticated?
     authentication_classes = []
     permission_classes = [AllowAny]
     def post(self,request):
-        print("zbxjavxj")
         username = request.data.get('username')
         Newpassword = request.data.get('Newpassword')
         user = User.objects.filter(username=username).first()
@@ -132,8 +148,6 @@ class ForgetPasswordView(APIView):
             return Response({"message" : "Successfully Updated"},status=200)
         else:
             return Response({"message":"User Not Found"},status=404)
-  
-# update password 
 
 
 class UserLogoutView(APIView):
